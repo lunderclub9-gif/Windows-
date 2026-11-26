@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/windows-installer.yml"
+      - "installer/**"
       - "documaker_dz/**"
   workflow_dispatch:
 
@@ -39,6 +40,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path "documaker_dz/bin" | Out-Null
           Copy-Item $ffmpeg.FullName "documaker_dz/bin/ffmpeg.exe"
           Copy-Item $ffprobe.FullName "documaker_dz/bin/ffprobe.exe"
+          $license = Get-ChildItem -Path $extract -Recurse -File | Where-Object { $_.Name -match '^(LICENSE|COPYING)(\\..*)?$' } | Select-Object -First 1
+          if ($license) { Copy-Item $license.FullName "documaker_dz/bin/FFmpeg-LICENSE.txt" }
           "documaker_dz/bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Install Python dependencies
@@ -61,7 +64,7 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: |
-          & "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe" "installer\DocuMakerDZ.iss"
+          & "$env:ProgramFiles(x86)\\Inno Setup 6\\ISCC.exe" "installer\\DocuMakerDZ.iss"
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed." }
 
       - name: Verify installer exists
