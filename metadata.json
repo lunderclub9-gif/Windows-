@@ -1,0 +1,6 @@
+{
+  "name": "DocuMaker DZ — صانع الوثائقيات",
+  "description": "Arabic-first Windows desktop documentary video factory built with Python, PySide6, FFmpeg, Edge-TTS, Pexels, and PyInstaller.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
