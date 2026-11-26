@@ -7,10 +7,10 @@ from pathlib import Path
 from ..core.errors import DocuMakerError
 from ..core.http_client import HttpNetworkError, download_file, request_json
 from ..core.models import MediaCandidate
-from .base import ImageProvider, MusicProvider, SearchProvider
+from .base import ImageProvider, VideoProvider, MusicProvider, SearchProvider
 
 
-class PixabayProvider(ImageProvider, MusicProvider):
+class PixabayProvider(ImageProvider, VideoProvider, MusicProvider):
     name = "pixabay"
 
     def __init__(self, api_key: str = "") -> None:
@@ -60,6 +60,69 @@ class PixabayProvider(ImageProvider, MusicProvider):
                 )
             )
         return out
+
+    def search_videos(self, query: str, per_page: int = 4) -> list[MediaCandidate]:
+        """Search Pixabay's free stock-video API."""
+        if not self.api_key:
+            return []
+        try:
+            resp = request_json(
+                "GET",
+                "https://pixabay.com/api/videos/",
+                params={
+                    "key": self.api_key,
+                    "q": query,
+                    "video_type": "all",
+                    "per_page": per_page,
+                    "safesearch": "true",
+                },
+                timeout=25.0,
+            )
+        except HttpNetworkError as exc:
+            raise DocuMakerError("err.no_internet", str(exc)) from exc
+        if resp.status_code >= 400:
+            return []
+        hits = resp.json().get("hits", [])
+        out: list[MediaCandidate] = []
+        for hit in hits:
+            variants = hit.get("videos") or {}
+            files = [v for v in variants.values() if isinstance(v, dict) and v.get("url")]
+            if not files:
+                continue
+            files.sort(key=lambda v: int(v.get("width", 0)), reverse=True)
+            best = files[0]
+            out.append(
+                MediaCandidate(
+                    provider="pixabay",
+                    media_type="video",
+                    media_id=str(hit.get("id", "")),
+                    url=str(hit.get("pageURL", "")),
+                    download_url=str(best.get("url", "")),
+                    thumbnail_url=str(hit.get("userImageURL", "")),
+                    width=int(best.get("width", 1280)),
+                    height=int(best.get("height", 720)),
+                    duration=float(hit.get("duration", 0.0)),
+                    license_name="Pixabay Content License",
+                    attribution=f"Video by {hit.get('user', 'Pixabay')} on Pixabay",
+                    source_page=str(hit.get("pageURL", "")),
+                    score=55.0 if int(best.get("width", 0)) >= 1280 else 35.0,
+                )
+            )
+        return out
+
+    def download_candidate(self, candidate: MediaCandidate, dest_dir: Path, filename_prefix: str) -> Path:
+        """Download an image or video selected from Pixabay."""
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        ext = ".mp4" if candidate.media_type == "video" else ".jpg"
+        dest_path = dest_dir / f"{filename_prefix}{ext}"
+        try:
+            status = download_file(candidate.download_url, dest_path, timeout=90.0)
+        except HttpNetworkError as exc:
+            raise DocuMakerError("err.no_internet", str(exc)) from exc
+        if status >= 400:
+            raise DocuMakerError("err.generic", f"Pixabay media download HTTP {status}")
+        candidate.local_path = str(dest_path)
+        return dest_path
 
     def search_music(self, query: str, mood: str = "") -> list[dict[str, str]]:
         curated = [
