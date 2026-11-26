@@ -7,6 +7,11 @@ on:
       - ".github/workflows/windows-installer.yml"
       - "installer/**"
       - "documaker_dz/**"
+  pull_request:
+    paths:
+      - ".github/workflows/windows-installer.yml"
+      - "installer/**"
+      - "documaker_dz/**"
   workflow_dispatch:
 
 permissions:
@@ -113,6 +118,7 @@ jobs:
           Write-Host "Installer ready: $($installer.FullName), $($installer.Length) bytes"
 
       - name: Publish GitHub Release
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.1.1
