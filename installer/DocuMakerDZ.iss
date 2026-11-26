@@ -1,5 +1,5 @@
 #define AppName "DocuMaker DZ"
-#define AppVersion "0.1.1"
+#define AppVersion "0.1.2"
 #define AppPublisher "DocuMaker DZ"
 #define AppExeName "DocuMakerDZ.exe"
 
