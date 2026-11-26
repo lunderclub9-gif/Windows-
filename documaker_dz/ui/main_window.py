@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..ai.providers import build_ai_provider
+from ..ai.providers import build_ai_provider, list_gemini_models
 from ..ai.scene_planner import ScenePlanner
 from ..core.errors import DocuMakerError
 from ..core.models import MediaCandidate, Project
@@ -1093,7 +1093,7 @@ class MainWindow(QMainWindow):
         ai_lay.addWidget(self.active_ai_combo)
 
         model_options = {
-            "gemini": ("gemini_model", ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-lite"]),
+            "gemini": ("gemini_model", ["gemini-3.1-pro-preview", "gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"]),
             "groq": ("groq_model", ["llama-3.3-70b-versatile", "openai/gpt-oss-20b", "llama-4-scout-17b-16e-instruct", "qwen/qwen3-32b"]),
             "openrouter": ("openrouter_model", ["google/gemini-2.5-flash", "openai/gpt-4o-mini", "meta-llama/llama-3.3-70b-instruct:free", "deepseek/deepseek-chat-v3-0324:free"]),
             "openai": ("openai_model", ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1", "o4-mini"]),
@@ -1119,6 +1119,14 @@ class MainWindow(QMainWindow):
             self.ai_model_combos[pid] = model_combo
             ai_lay.addWidget(model_label)
             ai_lay.addWidget(model_combo)
+            if pid == "gemini":
+                refresh_models_btn = QPushButton("Refresh available Gemini models from Google")
+                refresh_models_btn.setObjectName("SecondaryBtn")
+                refresh_models_btn.clicked.connect(self._refresh_gemini_models)
+                ai_lay.addWidget(refresh_models_btn)
+                self.gemini_models_status = QLabel("Refresh to load all models enabled for your API key.")
+                self.gemini_models_status.setWordWrap(True)
+                ai_lay.addWidget(self.gemini_models_status)
         ai_lay.addStretch()
         tabs.addTab(ai_tab, self.loc.t("settings.tab.ai"))
 
@@ -1218,6 +1226,32 @@ class MainWindow(QMainWindow):
     def _clear_cache(self) -> None:
         freed_mb = self.settings.clear_cache()
         QMessageBox.information(self, self.loc.t("app.title"), self.loc.t("settings.cache_cleared", mb=freed_mb))
+
+    def _refresh_gemini_models(self) -> None:
+        card = self.provider_cards.get("gemini")
+        key = card.key_input.text().strip() if card else self.settings.get_api_key("gemini")
+        if not key:
+            QMessageBox.warning(self, self.loc.t("app.title"), "Enter your Gemini API key first.")
+            return
+        try:
+            models = list_gemini_models(key)
+            if not models:
+                QMessageBox.warning(self, self.loc.t("app.title"), "Google returned no models supporting generateContent for this API key.")
+                return
+            combo = self.ai_model_combos["gemini"]
+            selected = combo.currentText().strip()
+            combo.clear()
+            for model_id, display_name in models:
+                combo.addItem(model_id)
+                combo.setItemData(combo.count() - 1, display_name, Qt.ToolTipRole)
+            available = {model_id for model_id, _ in models}
+            if selected in available:
+                combo.setCurrentText(selected)
+            else:
+                combo.setCurrentText("gemini-3.1-pro-preview" if "gemini-3.1-pro-preview" in available else models[0][0])
+            self.gemini_models_status.setText(f"Loaded {len(models)} models directly from Google for this API key. Only generateContent models are shown.")
+        except DocuMakerError as exc:
+            QMessageBox.warning(self, self.loc.t("app.title"), exc.user_message(self.loc))
 
     def _disconnect_provider(self, provider_id: str) -> None:
         self.settings.set_api_key(provider_id, "")

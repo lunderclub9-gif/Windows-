@@ -340,7 +340,7 @@ class AppConfig:
     burn_subtitles: bool = True
     ken_burns_enabled: bool = True
     ai_disclosure_default: bool = False
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.5-flash"
     openai_model: str = "gpt-4o-mini"
     groq_model: str = "llama-3.3-70b-versatile"
     openrouter_model: str = "google/gemini-2.5-flash"

@@ -11,6 +11,36 @@ from ..core.http_client import HttpNetworkError, request_json
 from .base import AIProvider
 
 
+def list_gemini_models(api_key: str) -> list[tuple[str, str]]:
+    """Return every model enabled for generateContent on this API key."""
+    key = api_key.strip()
+    if not key:
+        raise DocuMakerError("err.missing_ai_key", "Missing Gemini API key")
+    models: list[tuple[str, str]] = []
+    page_token = ""
+    try:
+        for _ in range(20):
+            params: dict[str, str] = {"key": key, "pageSize": "1000"}
+            if page_token:
+                params["pageToken"] = page_token
+            resp = request_json("GET", "https://generativelanguage.googleapis.com/v1beta/models", params=params, timeout=20.0)
+            if resp.status_code >= 400:
+                _handle_http_error(resp.status_code, resp.text)
+            payload = resp.json()
+            for item in payload.get("models", []):
+                name = str(item.get("name", ""))
+                if name.startswith("models/") and "generateContent" in item.get("supportedGenerationMethods", []):
+                    model_id = name.removeprefix("models/")
+                    models.append((model_id, str(item.get("displayName") or model_id)))
+            page_token = str(payload.get("nextPageToken") or "")
+            if not page_token:
+                break
+    except HttpNetworkError as exc:
+        raise DocuMakerError("err.no_internet", str(exc)) from exc
+    unique = {model_id: label for model_id, label in models}
+    return sorted(unique.items(), key=lambda item: item[0].lower())
+
+
 def _extract_json(raw_text: str) -> dict[str, Any]:
     text = raw_text.strip()
     fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
