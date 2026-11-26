@@ -19,6 +19,7 @@ from documaker_dz.core.security import SecretVault
 from documaker_dz.core.settings_manager import SettingsManager
 from documaker_dz.localization.manager import LocalizationManager
 from documaker_dz.media.base import TTSResult
+from documaker_dz.media.pixabay_provider import PixabayProvider
 from documaker_dz.production.export_manager import ExportManager
 from documaker_dz.production.ffmpeg_utils import probe_duration, run_ffmpeg
 from documaker_dz.production.subtitle_generator import SubtitleGenerator
@@ -111,6 +112,42 @@ class DocuMakerTests(unittest.TestCase):
         loaded = vault.load_keys()
         self.assertEqual(loaded["gemini"], "AIzaSecretTestKey123")
         self.assertEqual(loaded["pexels"], "PexelsSecret456")
+
+    def test_ai_model_settings_persist(self) -> None:
+        self.settings.config.gemini_model = "gemini-custom-preview"
+        self.settings.config.openai_model = "gpt-custom-version"
+        self.settings.save_config()
+        reloaded = SettingsManager(app_dir=self.tmp_root / "appdata")
+        self.assertEqual(reloaded.config.gemini_model, "gemini-custom-preview")
+        self.assertEqual(reloaded.config.openai_model, "gpt-custom-version")
+
+    def test_pixabay_video_search_and_download(self) -> None:
+        provider = PixabayProvider("test-api-key")
+        response = type("Response", (), {
+            "status_code": 200,
+            "json": lambda self: {
+                "hits": [{
+                    "id": 123,
+                    "pageURL": "https://pixabay.com/videos/test-123/",
+                    "user": "Test Creator",
+                    "duration": 12,
+                    "videos": {
+                        "large": {"url": "https://cdn.example/video.mp4", "width": 1920, "height": 1080},
+                        "medium": {"url": "https://cdn.example/video-medium.mp4", "width": 1280, "height": 720},
+                    },
+                }]
+            },
+        })()
+        with patch("documaker_dz.media.pixabay_provider.request_json", return_value=response):
+            results = provider.search_videos("forest", per_page=2)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].provider, "pixabay")
+        self.assertEqual(results[0].media_type, "video")
+        self.assertEqual(results[0].width, 1920)
+        with patch("documaker_dz.media.pixabay_provider.download_file", return_value=200):
+            target = provider.download_candidate(results[0], self.tmp_root / "visuals", "scene_001")
+        self.assertEqual(target.suffix, ".mp4")
+        self.assertEqual(results[0].local_path, str(target))
 
     def test_project_crud_and_ffmpeg_export_with_burned_subtitles(self) -> None:
         proj = self.pm.create_project(
