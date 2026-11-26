@@ -41,6 +41,9 @@ class SettingsManager:
             try:
                 data = json.loads(self.config_path.read_text(encoding="utf-8"))
                 cfg = AppConfig.from_dict(data)
+                if cfg.gemini_model.strip() == "gemini-2.5-pro":
+                    cfg.gemini_model = "gemini-3.1-pro-preview"
+                    self.save_config(cfg)
                 if not cfg.projects_dir:
                     cfg.projects_dir = str(self._default_projects_dir())
                 return cfg
