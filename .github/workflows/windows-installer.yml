@@ -15,7 +15,7 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,6 +30,7 @@ jobs:
       - name: Download LGPL FFmpeg
         shell: pwsh
         run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
           $archive = Join-Path $env:RUNNER_TEMP "ffmpeg-lgpl.zip"
           $extract = Join-Path $env:RUNNER_TEMP "ffmpeg-lgpl"
           $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip"
@@ -40,120 +41,10 @@ jobs:
               curl.exe -fL --retry 2 --retry-all-errors --connect-timeout 30 --max-time 600 -A "DocuMakerDZ-Windows-Builder" $url -o $archive
               if ($LASTEXITCODE -ne 0) { throw "FFmpeg download returned exit code $LASTEXITCODE." }
               $zip = [System.IO.Compression.ZipFile]::OpenRead($archive)
-              $hasBinaries = ($zip.Entries | Where-Object { $_.FullName -match '(^|/)ffmpeg.exe
-      - name: Verify bundled FFmpeg capabilities
-        shell: pwsh
-        run: |
-          $encoders = & "documaker_dz/bin/ffmpeg.exe" -hide_banner -encoders 2>&1 | Out-String
-          if ($encoders -notmatch "\bmpeg4\b") { throw "The bundled FFmpeg build does not include the required mpeg4 encoder." }
-          $filters = & "documaker_dz/bin/ffmpeg.exe" -hide_banner -filters 2>&1 | Out-String
-          if ($filters -notmatch "\bass\b") { throw "The bundled FFmpeg build does not include the ASS subtitle filter." }
-          Write-Host "FFmpeg has the mpeg4 encoder and ASS subtitle filter."
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r documaker_dz/requirements.txt
-
-      - name: Run automated tests
-        env:
-          PYTHONPATH: ${{ github.workspace }}
-        run: python -m unittest discover -s documaker_dz/tests -v
-
-      - name: Build standalone Windows executable
-        working-directory: documaker_dz
-        run: pyinstaller --clean --noconfirm documaker.spec
-
-      - name: Install Inno Setup
-        run: choco install innosetup --yes --no-progress
-
-      - name: Build installer
-        shell: pwsh
-        run: |
-          $iscc = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
-          if (-not $iscc) {
-            $candidates = @(
-              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-              "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
-            )
-            $isccPath = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-          } else {
-            $isccPath = $iscc.Source
-          }
-          if (-not $isccPath) { throw "Inno Setup compiler ISCC.exe was not found." }
-          & $isccPath "installer\DocuMakerDZ.iss"
-          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE." }
-
-      - name: Verify installer exists
-        shell: pwsh
-        run: |
-          $installer = Get-Item "installer-output/DocuMakerDZ-Setup-0.1.0.exe"
-          if ($installer.Length -lt 10MB) { throw "Installer is unexpectedly small." }
-          Write-Host "Installer ready: $($installer.FullName), $($installer.Length) bytes"
-
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v0.1.0
-          name: DocuMaker DZ 0.1.0 - Windows Installer
-          target_commitish: ${{ github.sha }}
-          draft: false
-          prerelease: true
-          generate_release_notes: true
-          files: installer-output/DocuMakerDZ-Setup-0.1.0.exe
- }).Count -gt 0 -and ($zip.Entries | Where-Object { $_.FullName -match '(^|/)ffprobe.exe
-      - name: Verify bundled FFmpeg capabilities
-        shell: pwsh
-        run: |
-          $encoders = & "documaker_dz/bin/ffmpeg.exe" -hide_banner -encoders 2>&1 | Out-String
-          if ($encoders -notmatch "\bmpeg4\b") { throw "The bundled FFmpeg build does not include the required mpeg4 encoder." }
-          $filters = & "documaker_dz/bin/ffmpeg.exe" -hide_banner -filters 2>&1 | Out-String
-          if ($filters -notmatch "\bass\b") { throw "The bundled FFmpeg build does not include the ASS subtitle filter." }
-          Write-Host "FFmpeg has the mpeg4 encoder and ASS subtitle filter."
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r documaker_dz/requirements.txt
-
-      - name: Run automated tests
-        env:
-          PYTHONPATH: ${{ github.workspace }}
-        run: python -m unittest discover -s documaker_dz/tests -v
-
-      - name: Build standalone Windows executable
-        working-directory: documaker_dz
-        run: pyinstaller --clean --noconfirm documaker.spec
-
-      - name: Install Inno Setup
-        run: choco install innosetup --yes --no-progress
-
-      - name: Build installer
-        shell: pwsh
-        run: |
-          & "$env:ProgramFiles(x86)\\Inno Setup 6\\ISCC.exe" "installer\\DocuMakerDZ.iss"
-          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed." }
-
-      - name: Verify installer exists
-        shell: pwsh
-        run: |
-          $installer = Get-Item "installer-output/DocuMakerDZ-Setup-0.1.0.exe"
-          if ($installer.Length -lt 10MB) { throw "Installer is unexpectedly small." }
-          Write-Host "Installer ready: $($installer.FullName), $($installer.Length) bytes"
-
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v0.1.0
-          name: DocuMaker DZ 0.1.0 - Windows Installer
-          target_commitish: ${{ github.sha }}
-          draft: false
-          prerelease: true
-          generate_release_notes: true
-          files: installer-output/DocuMakerDZ-Setup-0.1.0.exe
- }).Count -gt 0
+              $hasFfmpeg = @($zip.Entries | Where-Object { $_.FullName -match '(^|/)ffmpeg.exe$' }).Count -gt 0
+              $hasFfprobe = @($zip.Entries | Where-Object { $_.FullName -match '(^|/)ffprobe.exe$' }).Count -gt 0
               $zip.Dispose()
-              if (-not $hasBinaries) { throw "Downloaded file is not the expected FFmpeg ZIP archive." }
+              if (-not ($hasFfmpeg -and $hasFfprobe)) { throw "Downloaded file is not the expected FFmpeg ZIP archive." }
               $downloaded = $true
               break
             } catch {
@@ -166,61 +57,11 @@ jobs:
           Expand-Archive -Path $archive -DestinationPath $extract -Force
           $ffmpeg = Get-ChildItem -Path $extract -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
           $ffprobe = Get-ChildItem -Path $extract -Recurse -Filter "ffprobe.exe" | Select-Object -First 1
-          if (-not $ffmpeg -or -not $ffprobe) { throw "FFmpeg binaries were not found in the downloaded archive." }
+          if (-not $ffmpeg -or -not $ffprobe) { throw "FFmpeg binaries were not found after extraction." }
           New-Item -ItemType Directory -Force -Path "documaker_dz/bin" | Out-Null
           Copy-Item $ffmpeg.FullName "documaker_dz/bin/ffmpeg.exe"
           Copy-Item $ffprobe.FullName "documaker_dz/bin/ffprobe.exe"
-          $license = Get-ChildItem -Path $extract -Recurse -File | Where-Object { $_.Name -match '^(LICENSE|COPYING)(\..*)?
-      - name: Verify bundled FFmpeg capabilities
-        shell: pwsh
-        run: |
-          $encoders = & "documaker_dz/bin/ffmpeg.exe" -hide_banner -encoders 2>&1 | Out-String
-          if ($encoders -notmatch "\bmpeg4\b") { throw "The bundled FFmpeg build does not include the required mpeg4 encoder." }
-          $filters = & "documaker_dz/bin/ffmpeg.exe" -hide_banner -filters 2>&1 | Out-String
-          if ($filters -notmatch "\bass\b") { throw "The bundled FFmpeg build does not include the ASS subtitle filter." }
-          Write-Host "FFmpeg has the mpeg4 encoder and ASS subtitle filter."
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r documaker_dz/requirements.txt
-
-      - name: Run automated tests
-        env:
-          PYTHONPATH: ${{ github.workspace }}
-        run: python -m unittest discover -s documaker_dz/tests -v
-
-      - name: Build standalone Windows executable
-        working-directory: documaker_dz
-        run: pyinstaller --clean --noconfirm documaker.spec
-
-      - name: Install Inno Setup
-        run: choco install innosetup --yes --no-progress
-
-      - name: Build installer
-        shell: pwsh
-        run: |
-          & "$env:ProgramFiles(x86)\\Inno Setup 6\\ISCC.exe" "installer\\DocuMakerDZ.iss"
-          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed." }
-
-      - name: Verify installer exists
-        shell: pwsh
-        run: |
-          $installer = Get-Item "installer-output/DocuMakerDZ-Setup-0.1.0.exe"
-          if ($installer.Length -lt 10MB) { throw "Installer is unexpectedly small." }
-          Write-Host "Installer ready: $($installer.FullName), $($installer.Length) bytes"
-
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v0.1.0
-          name: DocuMaker DZ 0.1.0 - Windows Installer
-          target_commitish: ${{ github.sha }}
-          draft: false
-          prerelease: true
-          generate_release_notes: true
-          files: installer-output/DocuMakerDZ-Setup-0.1.0.exe
- } | Select-Object -First 1
+          $license = Get-ChildItem -Path $extract -Recurse -File | Where-Object { $_.Name -match '^(LICENSE|COPYING)(\..*)?$' } | Select-Object -First 1
           if ($license) { Copy-Item $license.FullName "documaker_dz/bin/FFmpeg-LICENSE.txt" }
           "documaker_dz/bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
@@ -228,9 +69,9 @@ jobs:
         shell: pwsh
         run: |
           $encoders = & "documaker_dz/bin/ffmpeg.exe" -hide_banner -encoders 2>&1 | Out-String
-          if ($encoders -notmatch "\bmpeg4\b") { throw "The bundled FFmpeg build does not include the required mpeg4 encoder." }
+          if ($encoders -notmatch '(?m)^\s*V\S+\s+mpeg4\s') { throw "The bundled FFmpeg build does not include the required mpeg4 encoder." }
           $filters = & "documaker_dz/bin/ffmpeg.exe" -hide_banner -filters 2>&1 | Out-String
-          if ($filters -notmatch "\bass\b") { throw "The bundled FFmpeg build does not include the ASS subtitle filter." }
+          if ($filters -notmatch '\bass\b') { throw "The bundled FFmpeg build does not include the ASS subtitle filter." }
           Write-Host "FFmpeg has the mpeg4 encoder and ASS subtitle filter."
 
       - name: Install Python dependencies
@@ -253,8 +94,16 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: |
-          & "$env:ProgramFiles(x86)\\Inno Setup 6\\ISCC.exe" "installer\\DocuMakerDZ.iss"
-          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed." }
+          $programFilesX86 = [Environment]::GetFolderPath("ProgramFilesX86")
+          $programFiles = [Environment]::GetFolderPath("ProgramFiles")
+          $candidates = @(
+            (Join-Path $programFilesX86 "Inno Setup 6\ISCC.exe"),
+            (Join-Path $programFiles "Inno Setup 6\ISCC.exe")
+          )
+          $isccPath = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $isccPath) { throw "Inno Setup compiler ISCC.exe was not found. Checked: $($candidates -join '; ')" }
+          & $isccPath "installer\DocuMakerDZ.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE." }
 
       - name: Verify installer exists
         shell: pwsh
