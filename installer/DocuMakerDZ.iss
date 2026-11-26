@@ -31,9 +31,8 @@ Name: "desktopicon"; Description: "إنشاء اختصار على سطح الم�
 
 [Files]
 Source: "..\documaker_dz\dist\DocuMakerDZ.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\documaker_dz\bin\ffmpeg.exe"; DestDir: "{app}\bin"; Flags: ignoreversion
-Source: "..\documaker_dz\bin\ffprobe.exe"; DestDir: "{app}\bin"; Flags: ignoreversion
 Source: "..\documaker_dz\assets\icon.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
+Source: "..\documaker_dz\bin\FFmpeg-LICENSE.txt"; DestDir: "{app}\licenses"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\assets\icon.ico"
