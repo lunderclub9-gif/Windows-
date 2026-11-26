@@ -39,6 +39,10 @@ class SceneRenderer:
         frames = max(30, int(round(dur * fps)))
         output_mp4.parent.mkdir(parents=True, exist_ok=True)
 
+        # Use FFmpeg's built-in MPEG-4 Part 2 encoder. It is included in LGPL
+        # FFmpeg builds, unlike libx264 (which requires a GPL-enabled build).
+        video_codec_args = ["-c:v", "mpeg4", "-q:v", "5", "-pix_fmt", "yuv420p"]
+
         if scene.selected_media.media_type == "video":
             clip_dur = probe_duration(media_path)
             loop_args = ["-stream_loop", "-1"] if (clip_dur <= 0 or clip_dur < dur) else []
@@ -55,18 +59,10 @@ class SceneRenderer:
                 "-an",
                 "-vf",
                 vf,
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-crf",
-                "24",
-                "-pix_fmt",
-                "yuv420p",
+                *video_codec_args,
                 str(output_mp4),
             ]
         else:
-            # Smooth Ken Burns motion on still image
             kb = scene.ken_burns if project.ken_burns_enabled else "none"
             if kb == "zoom_out":
                 z_expr = f"if(eq(on,1),1.15,max(1.0,zoom-0.15/{frames}))"
@@ -84,12 +80,11 @@ class SceneRenderer:
                 z_expr = "1.0"
                 x_expr = "0"
                 y_expr = "0"
-            else:  # zoom_in
+            else:
                 z_expr = f"min(1.15,zoom+0.15/{frames})"
                 x_expr = "iw/2-(iw/zoom/2)"
                 y_expr = "ih/2-(ih/zoom/2)"
 
-            # Scale input safely first to reduce CPU cost during zoompan
             vf = (
                 f"scale={w * 2}:{h * 2}:force_original_aspect_ratio=increase,"
                 f"crop={w * 2}:{h * 2},"
@@ -106,14 +101,7 @@ class SceneRenderer:
                 "-an",
                 "-vf",
                 vf,
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-crf",
-                "24",
-                "-pix_fmt",
-                "yuv420p",
+                *video_codec_args,
                 str(output_mp4),
             ]
 
