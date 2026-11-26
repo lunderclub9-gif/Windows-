@@ -180,11 +180,12 @@ class VideoPipelineRunner:
                 if on_step_started:
                     on_step_started(current_step, self.loc.t("step.5"))
                 pexels_key = self.settings.get_api_key("pexels")
-                if not pexels_key:
-                    raise DocuMakerError("err.missing_pexels_key", "Missing Pexels key", step=current_step)
-                pexels = PexelsMediaProvider(pexels_key, cache_dir=self.settings.cache_dir)
-                pixabay = PixabayProvider(self.settings.get_api_key("pixabay"))
+                pixabay_key = self.settings.get_api_key("pixabay")
+                pexels = PexelsMediaProvider(pexels_key, cache_dir=self.settings.cache_dir) if pexels_key else None
+                pixabay = PixabayProvider(pixabay_key) if pixabay_key else None
                 wiki = WikimediaSearchProvider()
+                if not pexels and not pixabay:
+                    raise DocuMakerError("err.missing_pexels_key", "Connect at least one stock-media provider (Pexels or Pixabay)", step=current_step)
                 visuals_dir = Path(project.folder_path) / "visuals"
 
                 for idx, scene in enumerate(project.scenes, start=1):
@@ -195,16 +196,26 @@ class VideoPipelineRunner:
                         on_detail(f"Visual {idx}/{len(project.scenes)}")
                     query = " ".join(scene.search_keywords[:3]) or scene.visual_prompt[:60] or project.title
                     candidates = []
-                    # Fetch both videos and images sequentially to minimize RAM
-                    candidates.extend(pexels.search_videos(query, per_page=2))
-                    candidates.extend(pexels.search_images(query, per_page=3))
-                    if not candidates and pixabay.api_key:
-                        candidates.extend(pixabay.search_images(query, per_page=3))
+                    # Query every connected stock provider; a single provider outage must not block the others.
+                    for provider in (pexels, pixabay):
+                        if not provider:
+                            continue
+                        try:
+                            candidates.extend(provider.search_videos(query, per_page=2))
+                            candidates.extend(provider.search_images(query, per_page=3))
+                        except DocuMakerError as exc:
+                            logger.warning("Media provider %s failed: %s", provider.name, exc.technical_detail)
                     if not candidates:
                         candidates.extend(wiki.search(query, limit=3))
                     if not candidates:
-                        # Broader fallback query
-                        candidates.extend(pexels.search_images("cinematic documentary landscape", per_page=2))
+                        # Broader fallback query across whichever providers are connected.
+                        for provider in (pexels, pixabay):
+                            if not provider:
+                                continue
+                            try:
+                                candidates.extend(provider.search_images("cinematic documentary landscape", per_page=2))
+                            except DocuMakerError as exc:
+                                logger.warning("Media fallback %s failed: %s", provider.name, exc.technical_detail)
                     if not candidates:
                         raise DocuMakerError(
                             "err.no_visuals_found",
@@ -215,12 +226,14 @@ class VideoPipelineRunner:
                     candidates.sort(key=lambda c: c.score, reverse=True)
                     scene.candidates = candidates[:4]
                     chosen = scene.candidates[0]
-                    if chosen.provider == "pexels":
+                    if chosen.provider == "pexels" and pexels:
                         pexels.download_candidate(chosen, visuals_dir, f"scene_{scene.id:03d}")
+                    elif chosen.provider == "pixabay" and pixabay:
+                        pixabay.download_candidate(chosen, visuals_dir, f"scene_{scene.id:03d}")
                     elif chosen.provider == "wikimedia":
                         WikimediaSearchProvider.download_to(chosen, visuals_dir / f"scene_{scene.id:03d}.jpg")
                     else:
-                        pexels.download_candidate(chosen, visuals_dir, f"scene_{scene.id:03d}")
+                        raise DocuMakerError("err.no_visuals_found", "Selected media provider is not connected", step=current_step, scene=scene.id)
                     scene.selected_media = chosen
                 project.completed_step = max(project.completed_step, current_step)
                 self.project_manager.save_project(project)
