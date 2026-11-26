@@ -1139,11 +1139,9 @@ class MainWindow(QMainWindow):
         # Tab 3: Music
         m_tab = QWidget()
         m_lay = QVBoxLayout(m_tab)
-        px_card = ProviderSettingsCard("pixabay", "Pixabay Music & Media", True, self.settings.get_api_key("pixabay"), self.loc)
-        px_card.test_requested.connect(self._test_provider)
-        px_card.disconnect_requested.connect(self._disconnect_provider)
-        self.provider_cards["pixabay"] = px_card
-        m_lay.addWidget(px_card)
+        music_info = QLabel("Built-in free music tracks are available without an API key.")
+        music_info.setWordWrap(True)
+        m_lay.addWidget(music_info)
         m_lay.addStretch()
         tabs.addTab(m_tab, self.loc.t("settings.tab.music"))
 
@@ -1155,6 +1153,11 @@ class MainWindow(QMainWindow):
         pex_card.disconnect_requested.connect(self._disconnect_provider)
         self.provider_cards["pexels"] = pex_card
         im_lay.addWidget(pex_card)
+        pix_card = ProviderSettingsCard("pixabay", "Pixabay Photos & Videos (Optional)", True, self.settings.get_api_key("pixabay"), self.loc)
+        pix_card.test_requested.connect(self._test_provider)
+        pix_card.disconnect_requested.connect(self._disconnect_provider)
+        self.provider_cards["pixabay"] = pix_card
+        im_lay.addWidget(pix_card)
         wiki_lbl = QLabel(f"Wikimedia Commons: {self.loc.t('settings.status.connected')} ({self.loc.t('settings.free_tier')})")
         wiki_lbl.setStyleSheet("color: #34D399; font-weight: 700; padding: 8px;")
         im_lay.addWidget(wiki_lbl)
