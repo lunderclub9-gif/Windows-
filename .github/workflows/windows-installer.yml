@@ -44,6 +44,15 @@ jobs:
           if ($license) { Copy-Item $license.FullName "documaker_dz/bin/FFmpeg-LICENSE.txt" }
           "documaker_dz/bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
+      - name: Verify bundled FFmpeg capabilities
+        shell: pwsh
+        run: |
+          $encoders = & "documaker_dz/bin/ffmpeg.exe" -hide_banner -encoders 2>&1 | Out-String
+          if ($encoders -notmatch "\\bmpeg4\\b") { throw "The bundled FFmpeg build does not include the required mpeg4 encoder." }
+          $filters = & "documaker_dz/bin/ffmpeg.exe" -hide_banner -filters 2>&1 | Out-String
+          if ($filters -notmatch "\\bass\\b") { throw "The bundled FFmpeg build does not include the ASS subtitle filter." }
+          Write-Host "FFmpeg has the mpeg4 encoder and ASS subtitle filter."
+
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
