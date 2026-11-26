@@ -27,10 +27,8 @@ class ExportManager:
         progress_cb=None,
         cancel_event: threading.Event | None = None,
     ) -> Path:
-        # 1. License & asset verification
         self.reviewer.review_before_export(project)
 
-        # 2. Disk space check
         req_mb = ProjectManager.estimate_required_mb(project.target_minutes, project.resolution)
         free_mb = shutil.disk_usage(project.folder_path).free / (1024 * 1024)
         if free_mb < req_mb * 0.5:
@@ -47,7 +45,6 @@ class ExportManager:
         tmp_dir.mkdir(parents=True, exist_ok=True)
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        # 3. Render scenes sequentially
         scene_clips: list[Path] = []
         total_scenes = len(project.scenes)
         for idx, scene in enumerate(project.scenes, start=1):
@@ -57,7 +54,6 @@ class ExportManager:
             self.scene_renderer.render_scene(project, scene, clip_path, cancel_event=cancel_event)
             scene_clips.append(clip_path)
 
-        # 4. Concatenate visual clips
         concat_list = tmp_dir / "video_concat.txt"
         concat_list.write_text(
             "\n".join(f"file '{c.resolve().as_posix()}'" for c in scene_clips),
@@ -70,17 +66,14 @@ class ExportManager:
             step=9,
         )
 
-        # 5. Build narration & ducked music mix
         voice_wav = tmp_dir / "narration_full.wav"
         self.music_mixer.build_narration_track(project, voice_wav, cancel_event=cancel_event)
         mixed_aac = tmp_dir / "audio_mix.aac"
         self.music_mixer.mix_final_audio(project, voice_wav, mixed_aac, cancel_event=cancel_event)
 
-        # 6. Mux video + audio + optional burned-in subtitles
         final_mp4 = out_dir / "final_video.mp4"
         ass_path = Path(project.subtitle_ass_path) if project.subtitle_ass_path else None
         if project.burn_subtitles and ass_path and ass_path.exists():
-            # Escape path for FFmpeg subtitles/ass filter on Windows & POSIX
             escaped = ass_path.resolve().as_posix().replace(":", "\\:")
             run_ffmpeg(
                 [
@@ -91,11 +84,11 @@ class ExportManager:
                     "-vf",
                     f"ass='{escaped}'",
                     "-c:v",
-                    "libx264",
-                    "-preset",
-                    "veryfast",
-                    "-crf",
-                    "24",
+                    "mpeg4",
+                    "-q:v",
+                    "5",
+                    "-pix_fmt",
+                    "yuv420p",
                     "-c:a",
                     "copy",
                     "-shortest",
@@ -126,7 +119,6 @@ class ExportManager:
                 step=9,
             )
 
-        # 7. Extract thumbnail frame for Project Library
         thumb_path = out_dir / "thumbnail.jpg"
         try:
             run_ffmpeg(
@@ -139,7 +131,6 @@ class ExportManager:
         except DocuMakerError:
             pass
 
-        # 8. Clean temporary files to save disk space on low-end PCs
         shutil.rmtree(tmp_dir, ignore_errors=True)
         tmp_dir.mkdir(exist_ok=True)
 
