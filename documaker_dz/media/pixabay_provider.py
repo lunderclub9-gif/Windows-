@@ -89,7 +89,7 @@ class PixabayProvider(ImageProvider, VideoProvider, MusicProvider):
             files = [v for v in variants.values() if isinstance(v, dict) and v.get("url")]
             if not files:
                 continue
-            files.sort(key=lambda v: abs(int(v.get("width", 1280)) - 1280))
+            files.sort(key=lambda v: int(v.get("width", 0)), reverse=True)
             best = files[0]
             out.append(
                 MediaCandidate(
