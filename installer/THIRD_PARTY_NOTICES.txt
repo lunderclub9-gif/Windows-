@@ -1,0 +1,6 @@
+DocuMaker DZ Windows installer
+Third-party component:
+- FFmpeg Windows x64 LGPL build from BtbN/FFmpeg-Builds.
+- Project and build information: https://github.com/BtbN/FFmpeg-Builds
+- FFmpeg source and license information: https://ffmpeg.org/
+The FFmpeg license notice is bundled in the installed application's licenses folder when provided by the upstream build archive.
