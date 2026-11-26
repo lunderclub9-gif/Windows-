@@ -689,7 +689,14 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, self.loc.t("app.title"), self.loc.t("err.missing_ai_key"))
             return
         try:
-            ai = build_ai_provider(self.settings.config.active_ai_provider, api_key)
+            provider_name = self.settings.config.active_ai_provider
+            model_map = {
+                "gemini": self.settings.config.gemini_model,
+                "openai": self.settings.config.openai_model,
+                "groq": self.settings.config.groq_model,
+                "openrouter": self.settings.config.openrouter_model,
+            }
+            ai = build_ai_provider(provider_name, api_key, model=model_map.get(provider_name))
             for s in self.current_project.scenes:
                 if s.id == scene_id:
                     ScenePlanner().regenerate_single_scene(ai, self.current_project, s)
