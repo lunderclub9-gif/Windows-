@@ -81,6 +81,7 @@ class MainWindow(QMainWindow):
         self.preview_worker: VoicePreviewWorker | None = None
         self.step_rows: dict[int, StepProgressRow] = {}
         self.provider_cards: dict[str, ProviderSettingsCard] = {}
+        self.ai_model_combos: dict[str, QComboBox] = {}
         self.scene_editors: list[SceneEditorWidget] = []
         self.nav_buttons: list[QPushButton] = []
 
@@ -985,19 +986,34 @@ class MainWindow(QMainWindow):
         query = self.vis_search_input.text().strip()
         if not query:
             return
-        key = self.settings.get_api_key("pexels")
-        if not key:
-            QMessageBox.warning(self, self.loc.t("app.title"), self.loc.t("err.missing_pexels_key"))
+        pexels_key = self.settings.get_api_key("pexels")
+        pixabay_key = self.settings.get_api_key("pixabay")
+        if not pexels_key and not pixabay_key:
+            QMessageBox.warning(self, self.loc.t("app.title"), "Connect Pexels or Pixabay in Settings first.")
             return
         try:
-            pexels = PexelsMediaProvider(key, cache_dir=self.settings.cache_dir)
-            items = pexels.search_videos(query, per_page=2) + pexels.search_images(query, per_page=2)
+            pexels = PexelsMediaProvider(pexels_key, cache_dir=self.settings.cache_dir) if pexels_key else None
+            pixabay = PixabayProvider(pixabay_key) if pixabay_key else None
+            items = []
+            for provider in (pexels, pixabay):
+                if not provider:
+                    continue
+                try:
+                    items.extend(provider.search_videos(query, per_page=2))
+                    items.extend(provider.search_images(query, per_page=2))
+                except DocuMakerError:
+                    continue
             if not items:
                 QMessageBox.information(self, self.loc.t("app.title"), self.loc.t("err.no_visuals_found", scene=row + 1))
                 return
+            items.sort(key=lambda item: item.score, reverse=True)
             scene = self.current_project.scenes[row]
             chosen = items[0]
-            pexels.download_candidate(chosen, Path(self.current_project.folder_path) / "visuals", f"scene_{scene.id:03d}_custom")
+            dest = Path(self.current_project.folder_path) / "visuals"
+            if chosen.provider == "pexels" and pexels:
+                pexels.download_candidate(chosen, dest, f"scene_{scene.id:03d}_custom")
+            elif chosen.provider == "pixabay" and pixabay:
+                pixabay.download_candidate(chosen, dest, f"scene_{scene.id:03d}_custom")
             scene.selected_media = chosen
             self.project_manager.save_project(self.current_project)
             self._refresh_visual_studio()
@@ -1069,6 +1085,12 @@ class MainWindow(QMainWindow):
             self.active_ai_combo.setCurrentIndex(ai_idx)
         ai_lay.addWidget(self.active_ai_combo)
 
+        model_options = {
+            "gemini": ("gemini_model", ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-lite"]),
+            "groq": ("groq_model", ["llama-3.3-70b-versatile", "openai/gpt-oss-20b", "llama-4-scout-17b-16e-instruct", "qwen/qwen3-32b"]),
+            "openrouter": ("openrouter_model", ["google/gemini-2.5-flash", "openai/gpt-4o-mini", "meta-llama/llama-3.3-70b-instruct:free", "deepseek/deepseek-chat-v3-0324:free"]),
+            "openai": ("openai_model", ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1", "o4-mini"]),
+        }
         for pid, name, free in (
             ("gemini", "Google Gemini", True),
             ("groq", "Groq", True),
@@ -1080,6 +1102,16 @@ class MainWindow(QMainWindow):
             card.disconnect_requested.connect(self._disconnect_provider)
             self.provider_cards[pid] = card
             ai_lay.addWidget(card)
+            attr, suggestions = model_options[pid]
+            model_label = QLabel(f"{name} model / version (editable)")
+            model_combo = QComboBox()
+            model_combo.setEditable(True)
+            model_combo.addItems(suggestions)
+            model_combo.setCurrentText(str(getattr(self.settings.config, attr)))
+            model_combo.setToolTip("Choose a suggested model or enter any model ID supported by this provider.")
+            self.ai_model_combos[pid] = model_combo
+            ai_lay.addWidget(model_label)
+            ai_lay.addWidget(model_combo)
         ai_lay.addStretch()
         tabs.addTab(ai_tab, self.loc.t("settings.tab.ai"))
 
@@ -1111,7 +1143,7 @@ class MainWindow(QMainWindow):
         # Tab 4: Images / Video
         im_tab = QWidget()
         im_lay = QVBoxLayout(im_tab)
-        pex_card = ProviderSettingsCard("pexels", "Pexels Photos & Videos (Required Free API)", True, self.settings.get_api_key("pexels"), self.loc)
+        pex_card = ProviderSettingsCard("pexels", "Pexels Photos & Videos (Optional)", True, self.settings.get_api_key("pexels"), self.loc)
         pex_card.test_requested.connect(self._test_provider)
         pex_card.disconnect_requested.connect(self._disconnect_provider)
         self.provider_cards["pexels"] = pex_card
@@ -1188,7 +1220,8 @@ class MainWindow(QMainWindow):
 
         def run_test() -> tuple[bool, str]:
             if provider_id in ("gemini", "openai", "groq", "openrouter"):
-                return build_ai_provider(provider_id, key).test_connection()
+                model = self.ai_model_combos[provider_id].currentText().strip() if provider_id in self.ai_model_combos else None
+                return build_ai_provider(provider_id, key, model=model).test_connection()
             if provider_id == "pexels":
                 return PexelsMediaProvider(key).test_connection()
             if provider_id == "pixabay":
@@ -1217,6 +1250,11 @@ class MainWindow(QMainWindow):
         lang_changed = new_lang != self.settings.config.ui_language
         self.settings.config.ui_language = new_lang
         self.settings.config.active_ai_provider = str(self.active_ai_combo.currentData())
+        model_attrs = {"gemini": "gemini_model", "openai": "openai_model", "groq": "groq_model", "openrouter": "openrouter_model"}
+        for pid, attr in model_attrs.items():
+            value = self.ai_model_combos[pid].currentText().strip()
+            if value:
+                setattr(self.settings.config, attr, value)
         self.settings.config.projects_dir = self.projects_dir_edit.text().strip()
         self.settings.config.ai_disclosure_default = self.ai_disclosure_check.isChecked()
         self.settings.save_config()
